@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
+from uuid import UUID
 from app.schemas.transactions import TransactionCreate, TransactionListResponse, TransactionQuery, TransactionResponse
 from app.dependencies import TransactionRepositoryDep
 from app.repositories.transactions import TransactionRecord
@@ -41,7 +42,7 @@ def list_transactions(
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)
 def get_transaction(
-    transaction_id: str,
+    transaction_id: UUID,
     repository: TransactionRepositoryDep,
 ) -> TransactionRecord:
     record = repository.get_by_id(transaction_id)

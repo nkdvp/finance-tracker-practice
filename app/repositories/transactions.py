@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from uuid import uuid4
+from uuid import uuid4, UUID
 
-from sqlalchemy import UUID
 from app.enums import TransactionType
 
 @dataclass(frozen=True, slots=True)
