@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
-from app.schemas.transactions import TransactionCreate, TransactionQuery, TransactionResponse
+from app.schemas.transactions import TransactionCreate, TransactionListResponse, TransactionQuery, TransactionResponse
 from app.dependencies import TransactionRepositoryDep
 from app.repositories.transactions import TransactionRecord
 
@@ -22,17 +22,22 @@ def create_transaction(
 ) -> TransactionRecord:
     return repository.create(payload)
 
-@router.get("", response_model=list[TransactionResponse])
+@router.get("", response_model=TransactionListResponse)
 def list_transactions(
     filters: TransactionQueryDep,
     repository: TransactionRepositoryDep,
-) -> list[TransactionRecord]:
-    records = repository.list(
+) -> TransactionListResponse:
+    records, total = repository.list(
         transaction_type=filters.transaction_type,
         offset=filters.offset,
         limit=filters.limit,
     )
-    return [TransactionResponse.model_validate(record) for record in records]
+    return TransactionListResponse(
+        items=[TransactionResponse.model_validate(record) for record in records], 
+        total=total,
+        offset=filters.offset,
+        limit=filters.limit,
+    )
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)
 def get_transaction(

@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+from uuid import uuid4
 
 from sqlalchemy import UUID
 from app.enums import TransactionType
@@ -34,7 +35,7 @@ class InMemoryTransactionRepository:
 
     def create(self, payload) -> TransactionRecord:
         record = TransactionRecord(
-            id=UUID(),
+            id=uuid4(),
             description=payload.description,
             amount=payload.amount,
             transaction_type=payload.transaction_type,
@@ -47,3 +48,16 @@ class InMemoryTransactionRepository:
 
     def get_by_id(self, transaction_id: UUID) -> TransactionRecord | None:
         return self._records.get(transaction_id)
+    
+    def list(
+        self,
+        *,
+        transaction_type: TransactionType | None,
+        offset: int,
+        limit: int,
+    ) -> tuple[list[TransactionRecord], int]:
+        records = list(self._records.values())
+        if transaction_type is not None:
+            records = [r for r in records if r.transaction_type == transaction_type]
+        total = len(records)
+        return records[offset:offset + limit], total
