@@ -25,3 +25,6 @@ target-version = "py312"
 [tool.mypy]
 python_version = "3.12"
 strict = true
+# app uses namespace-package directories without __init__.py files. Resolve
+# modules from this project root so same-named router/repository files stay distinct.
+explicit_package_bases = true
