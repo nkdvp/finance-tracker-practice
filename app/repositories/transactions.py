@@ -1,74 +1,109 @@
-from dataclasses import dataclass
-from datetime import date, datetime, timezone
-from decimal import Decimal
 from typing import Protocol
-from uuid import UUID, uuid4
+from uuid import UUID
+
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums import TransactionType
-from app.schemas.transactions import TransactionCreate
-
-
-@dataclass(frozen=True, slots=True)
-class TransactionRecord:
-    id: UUID
-    description: str
-    amount: Decimal
-    transaction_type: TransactionType
-    occurred_on: date
-    created_at: datetime
-    audit_note: str
+from app.models.transactions import Transaction
+from app.schemas.transactions import TransactionCreate, TransactionUpdate
 
 
 class TransactionRepository(Protocol):
-    """Storage contract shared by in-memory and future database repositories.
+    """Persistence operations required by the transaction router."""
 
-    A Protocol uses structural typing: an implementation only needs matching
-    methods; it does not need to inherit from TransactionRepository.
-    """
+    async def create(self, payload: TransactionCreate) -> Transaction: ...
 
-    def create(self, payload: TransactionCreate) -> TransactionRecord: ...
+    async def get_by_id(self, transaction_id: UUID) -> Transaction | None: ...
 
-    def get_by_id(self, transaction_id: UUID) -> TransactionRecord | None: ...
-
-    def list(
+    async def list(
         self,
         *,
+        user_id: UUID | None,
+        category_id: UUID | None,
         transaction_type: TransactionType | None,
         offset: int,
         limit: int,
-    ) -> tuple[list[TransactionRecord], int]: ...
+    ) -> tuple[list[Transaction], int]: ...
+
+    async def update(
+        self,
+        transaction: Transaction,
+        payload: TransactionUpdate,
+    ) -> Transaction: ...
+
+    async def delete(self, transaction: Transaction) -> None: ...
 
 
-class InMemoryTransactionRepository:
-    def __init__(self) -> None:
-        self._records: dict[UUID, TransactionRecord] = {}
+class SqlAlchemyTransactionRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
 
-    def create(self, payload: TransactionCreate) -> TransactionRecord:
-        record = TransactionRecord(
-            id=uuid4(),
-            description=payload.description,
-            amount=payload.amount,
-            transaction_type=payload.transaction_type,
-            occurred_on=payload.occurred_on,
-            # Include the UTC offset so API clients can interpret this timestamp reliably.
-            created_at=datetime.now(timezone.utc),
-            audit_note="created-via-api",
-        )
-        self._records[record.id] = record
-        return record
+    async def create(self, payload: TransactionCreate) -> Transaction:
+        transaction = Transaction(**payload.model_dump())
+        self.session.add(transaction)
+        await self._commit()
+        await self.session.refresh(transaction)
+        return transaction
 
-    def get_by_id(self, transaction_id: UUID) -> TransactionRecord | None:
-        return self._records.get(transaction_id)
+    async def get_by_id(self, transaction_id: UUID) -> Transaction | None:
+        return await self.session.get(Transaction, transaction_id)
 
-    def list(
+    async def list(
         self,
         *,
+        user_id: UUID | None,
+        category_id: UUID | None,
         transaction_type: TransactionType | None,
         offset: int,
         limit: int,
-    ) -> tuple[list[TransactionRecord], int]:
-        records = list(self._records.values())
+    ) -> tuple[list[Transaction], int]:
+        items_statement = select(Transaction)
+        count_statement = select(func.count()).select_from(Transaction)
+
+        if user_id is not None:
+            items_statement = items_statement.where(Transaction.user_id == user_id)
+            count_statement = count_statement.where(Transaction.user_id == user_id)
+        if category_id is not None:
+            items_statement = items_statement.where(Transaction.category_id == category_id)
+            count_statement = count_statement.where(Transaction.category_id == category_id)
         if transaction_type is not None:
-            records = [r for r in records if r.transaction_type == transaction_type]
-        total = len(records)
-        return records[offset : offset + limit], total
+            items_statement = items_statement.where(
+                Transaction.transaction_type == transaction_type
+            )
+            count_statement = count_statement.where(
+                Transaction.transaction_type == transaction_type
+            )
+
+        items_statement = (
+            items_statement.order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await self.session.scalars(items_statement)
+        total = await self.session.scalar(count_statement)
+        return list(result.all()), int(total or 0)
+
+    async def update(
+        self,
+        transaction: Transaction,
+        payload: TransactionUpdate,
+    ) -> Transaction:
+        for field_name, value in payload.model_dump(exclude_unset=True).items():
+            setattr(transaction, field_name, value)
+
+        await self._commit()
+        await self.session.refresh(transaction)
+        return transaction
+
+    async def delete(self, transaction: Transaction) -> None:
+        await self.session.delete(transaction)
+        await self._commit()
+
+    async def _commit(self) -> None:
+        try:
+            await self.session.commit()
+        except IntegrityError:
+            await self.session.rollback()
+            raise

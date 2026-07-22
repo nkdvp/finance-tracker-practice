@@ -11,3 +11,8 @@ wheels/
 
 # Personal learning notes
 need-to-learn-more.md
+
+# Database
+*.db
+*.db-shm
+*.db-wal

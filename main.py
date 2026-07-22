@@ -1,19 +1,26 @@
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.concurrency import asynccontextmanager
+
+from app.database import dispose_engine
+from app.routers.categories import router as categories_router
 from app.routers.transactions import router as transactions_router
-from app.database import create_tables, dispose_engine
+from app.routers.users import router as users_router
+
+
+async def health_check() -> dict[str, str]:
+    return {"status": "healthy"}
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    await create_tables()
-
+    # Alembic owns schema creation; app startup only manages runtime resources.
     try:
         yield
     finally:
         await dispose_engine()
+
 
 def create_app() -> FastAPI:
     application = FastAPI(
@@ -21,14 +28,11 @@ def create_app() -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    application.add_api_route("/health", health_check, methods=["GET"], tags=["system"])
+    application.include_router(users_router)
+    application.include_router(categories_router)
     application.include_router(transactions_router)
     return application
 
 
 app = create_app()
-
-@app.get("/health")
-async def health_check() -> dict[str, str]:
-    """Verify that the application process is running."""
-    return {"status": "healthy"}
-

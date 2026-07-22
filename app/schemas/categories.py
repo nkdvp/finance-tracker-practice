@@ -1,5 +1,4 @@
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import datetime
 from typing import Self
 from uuid import UUID
 
@@ -8,34 +7,26 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.enums import TransactionType
 
 
-class TransactionBase(BaseModel):
+class CategoryBase(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
         populate_by_name=True,
         str_strip_whitespace=True,
     )
 
-    description: str = Field(min_length=1, max_length=200)
-    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    name: str = Field(min_length=1, max_length=100)
     transaction_type: TransactionType = Field(alias="type")
-    occurred_on: date
 
 
-class TransactionCreate(TransactionBase):
-    """Fields required to persist a transaction and its ownership."""
-
+class CategoryCreate(CategoryBase):
     user_id: UUID
-    category_id: UUID
 
 
-class TransactionUpdate(BaseModel):
+class CategoryUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, str_strip_whitespace=True)
 
-    category_id: UUID | None = None
-    description: str | None = Field(default=None, min_length=1, max_length=200)
-    amount: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
+    name: str | None = Field(default=None, min_length=1, max_length=100)
     transaction_type: TransactionType | None = Field(default=None, alias="type")
-    occurred_on: date | None = None
 
     @model_validator(mode="after")
     def validate_update(self) -> Self:
@@ -46,31 +37,25 @@ class TransactionUpdate(BaseModel):
         return self
 
 
-class TransactionResponse(TransactionBase):
-    """Fields the API guarantees to return to a client."""
-
+class CategoryResponse(CategoryBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
     user_id: UUID
-    category_id: UUID
     created_at: datetime
 
 
-class TransactionQuery(BaseModel):
-    """Validated query-string filters for the list endpoint."""
-
+class CategoryQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     user_id: UUID | None = None
-    category_id: UUID | None = None
     transaction_type: TransactionType | None = Field(default=None, alias="type")
     offset: int = Field(default=0, ge=0)
     limit: int = Field(default=20, ge=1, le=100)
 
 
-class TransactionListResponse(BaseModel):
-    items: list[TransactionResponse]
+class CategoryListResponse(BaseModel):
+    items: list[CategoryResponse]
     total: int = Field(ge=0)
     offset: int = Field(ge=0)
     limit: int = Field(ge=1, le=100)
