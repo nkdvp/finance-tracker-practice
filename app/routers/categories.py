@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 from sqlalchemy.exc import IntegrityError
 
 from app.dependencies import CategoryRepositoryDep, UserRepositoryDep
+from app.errors import DuplicateResourceError, ResourceInUseError, ResourceNotFoundError
 from app.models.categories import Category
 from app.schemas.categories import (
     CategoryCreate,
@@ -26,14 +27,14 @@ async def create_category(
     user_repository: UserRepositoryDep,
 ) -> Category:
     if await user_repository.get_by_id(payload.user_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise ResourceNotFoundError("User", payload.user_id)
 
     try:
         return await repository.create(payload)
     except IntegrityError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This user already has a category with the same name and type",
+        raise DuplicateResourceError(
+            "Category",
+            "This user already has a category with the same name and type",
         ) from exc
 
 
@@ -60,7 +61,7 @@ async def list_categories(
 async def get_category(category_id: UUID, repository: CategoryRepositoryDep) -> Category:
     category = await repository.get_by_id(category_id)
     if category is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise ResourceNotFoundError("Category", category_id)
     return category
 
 
@@ -72,24 +73,25 @@ async def update_category(
 ) -> Category:
     category = await repository.get_by_id(category_id)
     if category is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise ResourceNotFoundError("Category", category_id)
 
     type_is_changing = (
         payload.transaction_type is not None
         and payload.transaction_type != category.transaction_type
     )
     if type_is_changing and await repository.has_transactions(category.id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A category with transactions cannot change its type",
+        raise ResourceInUseError(
+            "Category",
+            category.id,
+            "A category with transactions cannot change its type",
         )
 
     try:
         return await repository.update(category, payload)
     except IntegrityError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This user already has a category with the same name and type",
+        raise DuplicateResourceError(
+            "Category",
+            "This user already has a category with the same name and type",
         ) from exc
 
 
@@ -97,11 +99,12 @@ async def update_category(
 async def delete_category(category_id: UUID, repository: CategoryRepositoryDep) -> None:
     category = await repository.get_by_id(category_id)
     if category is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise ResourceNotFoundError("Category", category_id)
     if await repository.has_transactions(category.id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Delete this category's transactions before deleting the category",
+        raise ResourceInUseError(
+            "Category",
+            category.id,
+            "Delete this category's transactions before deleting the category",
         )
 
     await repository.delete(category)

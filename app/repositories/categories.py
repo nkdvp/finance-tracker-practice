@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums import TransactionType
@@ -73,6 +74,11 @@ class SqlAlchemyCategoryRepository:
         )
         result = await self.session.scalars(items_statement)
         total = await self.session.scalar(count_statement)
+        # Should not use concurrency here because the two queries are dependent on each other and the session is not thread-safe. Using asyncio.gather would cause a race condition
+        # result, total = await asyncio.gather(
+        #     self.session.scalars(items_statement),
+        #     self.session.scalar(count_statement),
+        # )
         return list(result.all()), int(total or 0)
 
     async def update(self, category: Category, payload: CategoryUpdate) -> Category:

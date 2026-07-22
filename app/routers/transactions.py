@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 from sqlalchemy.exc import IntegrityError
 
 from app.dependencies import (
@@ -9,6 +9,7 @@ from app.dependencies import (
     TransactionRepositoryDep,
     UserRepositoryDep,
 )
+from app.errors import BusinessRuleViolationError, ResourceNotFoundError
 from app.models.transactions import Transaction
 from app.schemas.transactions import (
     TransactionCreate,
@@ -31,28 +32,28 @@ async def create_transaction(
     category_repository: CategoryRepositoryDep,
 ) -> Transaction:
     if await user_repository.get_by_id(payload.user_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise ResourceNotFoundError("User", payload.user_id)
 
     category = await category_repository.get_by_id(payload.category_id)
     if category is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise ResourceNotFoundError("Category", payload.category_id)
     if category.user_id != payload.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The category does not belong to this user",
+        raise BusinessRuleViolationError(
+            "category_ownership_mismatch",
+            "The category does not belong to this user",
         )
     if category.transaction_type != payload.transaction_type:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Transaction type must match category type",
+        raise BusinessRuleViolationError(
+            "transaction_category_type_mismatch",
+            "Transaction type must match category type",
         )
 
     try:
         return await repository.create(payload)
     except IntegrityError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The transaction violates a database constraint",
+        raise BusinessRuleViolationError(
+            "transaction_constraint_violation",
+            "The transaction violates a database constraint",
         ) from exc
 
 
@@ -83,7 +84,7 @@ async def get_transaction(
 ) -> Transaction:
     transaction = await repository.get_by_id(transaction_id)
     if transaction is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+        raise ResourceNotFoundError("Transaction", transaction_id)
     return transaction
 
 
@@ -96,30 +97,30 @@ async def update_transaction(
 ) -> Transaction:
     transaction = await repository.get_by_id(transaction_id)
     if transaction is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+        raise ResourceNotFoundError("Transaction", transaction_id)
 
     category_id = payload.category_id or transaction.category_id
     transaction_type = payload.transaction_type or transaction.transaction_type
     category = await category_repository.get_by_id(category_id)
     if category is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+        raise ResourceNotFoundError("Category", category_id)
     if category.user_id != transaction.user_id:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The category does not belong to this transaction's user",
+        raise BusinessRuleViolationError(
+            "category_ownership_mismatch",
+            "The category does not belong to this transaction's user",
         )
     if category.transaction_type != transaction_type:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Transaction type must match category type",
+        raise BusinessRuleViolationError(
+            "transaction_category_type_mismatch",
+            "Transaction type must match category type",
         )
 
     try:
         return await repository.update(transaction, payload)
     except IntegrityError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The transaction violates a database constraint",
+        raise BusinessRuleViolationError(
+            "transaction_constraint_violation",
+            "The transaction violates a database constraint",
         ) from exc
 
 
@@ -130,5 +131,5 @@ async def delete_transaction(
 ) -> None:
     transaction = await repository.get_by_id(transaction_id)
     if transaction is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+        raise ResourceNotFoundError("Transaction", transaction_id)
     await repository.delete(transaction)

@@ -1,10 +1,11 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Query, status
 from sqlalchemy.exc import IntegrityError
 
 from app.dependencies import UserRepositoryDep
+from app.errors import DuplicateResourceError, ResourceNotFoundError
 from app.models.users import User
 from app.schemas.users import UserCreate, UserListResponse, UserQuery, UserResponse
 
@@ -18,9 +19,9 @@ async def create_user(payload: UserCreate, repository: UserRepositoryDep) -> Use
     try:
         return await repository.create(payload)
     except IntegrityError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A user with this email already exists",
+        raise DuplicateResourceError(
+            "User",
+            "A user with this email already exists",
         ) from exc
 
 
@@ -39,5 +40,5 @@ async def list_users(filters: UserQueryDep, repository: UserRepositoryDep) -> Us
 async def get_user(user_id: UUID, repository: UserRepositoryDep) -> User:
     user = await repository.get_by_id(user_id)
     if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        raise ResourceNotFoundError("User", user_id)
     return user
