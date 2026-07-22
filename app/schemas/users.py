@@ -1,20 +1,26 @@
 from datetime import datetime
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+
+# EmailStr performs syntax/normalization validation through email-validator;
+# Annotated adds the database-compatible maximum length to that reusable type.
+Email = Annotated[EmailStr, Field(max_length=320)]
 
 
 class UserBase(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    email: str = Field(min_length=3, max_length=320)
+    email: Email
     display_name: str = Field(min_length=1, max_length=100)
 
     @field_validator("email")
     @classmethod
-    def normalize_email(cls, value: str) -> str:
-        """Avoid treating differently-cased versions of one email as separate users."""
-        return value.lower()
+    def normalize_email(cls, value: EmailStr) -> str:
+        """Apply the application's case-insensitive uniqueness policy."""
+        return str(value).lower()
 
 
 class UserCreate(UserBase):
