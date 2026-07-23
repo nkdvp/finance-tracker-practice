@@ -2,8 +2,6 @@ from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums import TransactionType
@@ -40,8 +38,7 @@ class SqlAlchemyCategoryRepository:
     async def create(self, payload: CategoryCreate) -> Category:
         category = Category(**payload.model_dump())
         self.session.add(category)
-        await self._commit()
-        await self.session.refresh(category)
+        await self.session.flush()
         return category
 
     async def get_by_id(self, category_id: UUID) -> Category | None:
@@ -85,8 +82,7 @@ class SqlAlchemyCategoryRepository:
         for field_name, value in payload.model_dump(exclude_unset=True).items():
             setattr(category, field_name, value)
 
-        await self._commit()
-        await self.session.refresh(category)
+        await self.session.flush()
         return category
 
     async def has_transactions(self, category_id: UUID) -> bool:
@@ -95,11 +91,4 @@ class SqlAlchemyCategoryRepository:
 
     async def delete(self, category: Category) -> None:
         await self.session.delete(category)
-        await self._commit()
-
-    async def _commit(self) -> None:
-        try:
-            await self.session.commit()
-        except IntegrityError:
-            await self.session.rollback()
-            raise
+        await self.session.flush()

@@ -2,7 +2,6 @@ from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.enums import TransactionType
@@ -43,8 +42,7 @@ class SqlAlchemyTransactionRepository:
     async def create(self, payload: TransactionCreate) -> Transaction:
         transaction = Transaction(**payload.model_dump())
         self.session.add(transaction)
-        await self._commit()
-        await self.session.refresh(transaction)
+        await self.session.flush()
         return transaction
 
     async def get_by_id(self, transaction_id: UUID) -> Transaction | None:
@@ -93,17 +91,9 @@ class SqlAlchemyTransactionRepository:
         for field_name, value in payload.model_dump(exclude_unset=True).items():
             setattr(transaction, field_name, value)
 
-        await self._commit()
-        await self.session.refresh(transaction)
+        await self.session.flush()
         return transaction
 
     async def delete(self, transaction: Transaction) -> None:
         await self.session.delete(transaction)
-        await self._commit()
-
-    async def _commit(self) -> None:
-        try:
-            await self.session.commit()
-        except IntegrityError:
-            await self.session.rollback()
-            raise
+        await self.session.flush()

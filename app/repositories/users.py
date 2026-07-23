@@ -2,7 +2,6 @@ from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.users import User
@@ -24,12 +23,8 @@ class SqlAlchemyUserRepository:
     async def create(self, payload: UserCreate) -> User:
         user = User(**payload.model_dump())
         self.session.add(user)
-        try:
-            await self.session.commit()
-        except IntegrityError:
-            await self.session.rollback()
-            raise
-        await self.session.refresh(user)
+        # flush sends SQL while leaving commit/rollback to the service use case.
+        await self.session.flush()
         return user
 
     async def get_by_id(self, user_id: UUID) -> User | None:
